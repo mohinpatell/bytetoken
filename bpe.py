@@ -75,7 +75,9 @@ class BPETokenizer:
         """Encode text to token ids using learned merges."""
         tokens = list(text.encode("utf-8"))
 
-        # apply merges in the order they were learned
+        # important: apply merges in the order they were learned during training,
+        # NOT by frequency in the current text. got bitten by this — if you
+        # merge greedily by frequency, you get different tokenizations than training.
         for pair, new_id in self.merges.items():
             i = 0
             while i < len(tokens) - 1:
