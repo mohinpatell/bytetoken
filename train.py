@@ -34,3 +34,10 @@ if __name__ == "__main__":
 
     tok.save("shakespeare.model")
     print(f"\nsaved to shakespeare.model")
+
+    # verify save/load roundtrip
+    tok2 = BPETokenizer()
+    tok2.load("shakespeare.model")
+    encoded2 = tok2.encode(sample)
+    assert encoded == encoded2, "save/load roundtrip broken!"
+    print("save/load roundtrip OK")
