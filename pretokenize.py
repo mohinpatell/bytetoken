@@ -1,7 +1,6 @@
-"""Regex-based pre-tokenization (GPT-2 style).
+"""Regex pre-tokenization (GPT-2 style).
 
-Before running BPE, split text on word boundaries so merges don't
-cross words. GPT-2 uses a specific regex pattern for this.
+Split on word boundaries before BPE so merges don't cross words.
 """
 
 import regex

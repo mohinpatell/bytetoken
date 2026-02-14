@@ -8,8 +8,6 @@ from pretokenize import pre_tokenize
 def test_roundtrip():
     """Every encode->decode should give back the original text."""
     tok = BPETokenizer()
-
-    # train on a small corpus
     text = "hello world! hello hello world. the cat sat on the mat."
     tok.train(text, vocab_size=280)
 

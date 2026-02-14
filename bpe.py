@@ -40,13 +40,10 @@ class BPETokenizer:
         """Train BPE on text. Learns merges until vocab reaches vocab_size."""
         assert vocab_size > 256, "vocab_size must be > 256 (base byte vocab)"
 
-        # pre-tokenize: split on word boundaries so merges don't cross words
+        # split on word boundaries so merges don't bleed across words
         chunks = pre_tokenize(text)
-
-        # convert each chunk to bytes
         token_lists = [list(chunk.encode("utf-8")) for chunk in chunks]
 
-        # base vocab: one token per byte value
         self.vocab = {i: bytes([i]) for i in range(256)}
         self.merges = {}
 
@@ -75,9 +72,7 @@ class BPETokenizer:
         """Encode a single pre-tokenized chunk."""
         tokens = list(chunk_bytes)
 
-        # important: apply merges in the order they were learned during training,
-        # NOT by frequency in the current text. got bitten by this — if you
-        # merge greedily by frequency, you get different tokenizations than training.
+        # order matters — must match training order, not current frequency
         for pair, new_id in self.merges.items():
             i = 0
             while i < len(tokens) - 1:
