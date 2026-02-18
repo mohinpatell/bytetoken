@@ -1,8 +1,8 @@
 # bytetoken
 
-Byte-pair encoding tokenizer built from scratch. Uses byte-level BPE with regex pre-tokenization, same approach as GPT-2/3/4.
+Byte pair encoding tokenizer built from scratch. Uses byte level BPE with regex pre-tokenization, same approach as GPT-2/3/4.
 
-After building [tinylm](https://github.com/mohinpatell/tinylm) with a character-level tokenizer (65 chars), I wanted to understand how real models handle text — turns out it's all about subword tokenization.
+After building [tinylm](https://github.com/mohinpatell/tinylm) with a character-level tokenizer (65 chars), I wanted to understand how real models handle text, turns out it's all about subword tokenization.
 
 ## How it works
 
