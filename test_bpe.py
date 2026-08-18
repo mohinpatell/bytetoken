@@ -1,6 +1,8 @@
-"""Test our BPE against tiktoken (GPT-2's tokenizer)."""
+"""Focused tests for the byte-level BPE tokenizer."""
 
-import tiktoken
+import os
+import tempfile
+
 from bpe import BPETokenizer
 from pretokenize import pre_tokenize
 
@@ -27,42 +29,79 @@ def test_roundtrip():
     print(f"roundtrip: all {len(test_cases)} cases passed")
 
 
-def test_pretokenization():
-    """Verify pre-tokenization splits correctly."""
-    chunks = pre_tokenize("Hello, world! Don't stop.")
-    # "Don't" should split into "Don" + "'t"
-    assert "'t" in chunks, f"contraction not split: {chunks}"
-    print(f"pretokenization: contractions handled correctly")
+def test_pretokenization_golden():
+    """Keep the split pattern's observable boundaries stable."""
+    text = "Hello, world! Don't STOP. 12345\n\nNext line."
+    expected = [
+        "Hello", ",", " world", "!", " Don", "'t", " STOP", ".", " ",
+        "123", "45", "\n\n", "Next", " line", ".",
+    ]
+    chunks = pre_tokenize(text)
+    assert chunks == expected, f"unexpected chunks: {chunks}"
+    assert "".join(chunks) == text
+    print("pretokenization golden: passed")
 
 
-def test_compression():
-    """Compare compression at different vocab sizes."""
-    import os
-    path = os.path.join(os.path.dirname(__file__), "data", "input.txt")
-    if not os.path.exists(path):
-        print("skipping compression test (no data)")
+def test_unicode_roundtrip():
+    """Round-trip multi-byte code points, emoji sequences, and newlines."""
+    training_text = ("naïve café 漢字 👩🏽‍💻\r\n" * 8) + "plain ASCII"
+    tok = BPETokenizer()
+    tok.train(training_text, vocab_size=280)
+
+    samples = [
+        "naïve café",
+        "漢字 and emoji 👩🏽‍💻",
+        "unseen: Ελληνικά 🚀\n",
+    ]
+    for text in samples:
+        assert tok.decode(tok.encode(text)) == text
+    print("unicode roundtrip: passed")
+
+
+def test_merge_order():
+    """Encoding must replay learned merges by rank, including nested merges."""
+    tok = BPETokenizer()
+    tok.vocab = {i: bytes([i]) for i in range(256)}
+    tok.merges = {
+        (ord("a"), ord("b")): 256,
+        (256, ord("c")): 257,
+    }
+    tok.vocab[256] = b"ab"
+    tok.vocab[257] = b"abc"
+
+    assert tok.encode("abcab") == [257, 256]
+    assert tok.decode([257, 256]) == "abcab"
+    print("merge order: passed")
+
+
+def test_save_load():
+    """Persist merge rank, vocabulary reconstruction, and special-token data."""
+    tok = BPETokenizer()
+    tok.train("low lower lowest low lower lowest " * 8, vocab_size=275)
+    tok.add_special_token("<|endoftext|>")
+    sample = "lowest lower unknown"
+    expected_ids = tok.encode(sample)
+
+    with tempfile.TemporaryDirectory() as directory:
+        path = os.path.join(directory, "tokenizer.model")
+        tok.save(path)
+        loaded = BPETokenizer()
+        loaded.load(path)
+
+    assert list(loaded.merges.items()) == list(tok.merges.items())
+    assert loaded.special_tokens == tok.special_tokens
+    assert loaded.encode(sample) == expected_ids
+    assert loaded.decode(expected_ids) == sample
+    print("save/load: passed")
+
+
+def run_optional_tiktoken_comparison():
+    """Print an end-to-end reference comparison when tiktoken is installed."""
+    try:
+        import tiktoken
+    except ModuleNotFoundError:
+        print("tiktoken comparison: skipped (optional dependency not installed)")
         return
-
-    with open(path) as f:
-        text = f.read()
-
-    raw_bytes = len(text.encode("utf-8"))
-    print(f"\ncompression analysis on {raw_bytes:,} bytes of shakespeare:")
-    print(f"{'vocab_size':>12} {'tokens':>10} {'bytes/token':>12} {'ratio':>8}")
-    print("-" * 46)
-
-    for vs in [300, 500, 1000, 2000, 5000]:
-        tok = BPETokenizer()
-        tok.train(text, vocab_size=vs)
-        n_tokens = len(tok.encode(text))
-        bpt = raw_bytes / n_tokens
-        ratio = raw_bytes / n_tokens
-        print(f"{vs:>12} {n_tokens:>10,} {bpt:>12.2f} {ratio:>7.2f}x")
-
-
-def test_vs_tiktoken():
-    """Compare our tokenizer against tiktoken on the same text."""
-    enc = tiktoken.get_encoding("gpt2")
 
     samples = [
         "Hello, world!",
@@ -70,23 +109,31 @@ def test_vs_tiktoken():
         "Don't you think it's a beautiful day?",
         "Numbers: 42, 3.14, 1000000",
     ]
+    training_text = "\n".join(samples * 32)
+    tok = BPETokenizer()
+    tok.train(training_text, vocab_size=300)
+    enc = tiktoken.get_encoding("cl100k_base")
 
-    print(f"\nours vs tiktoken (gpt2):")
-    print(f"{'text':>45} {'ours':>6} {'tiktoken':>9}")
+    print("\nreference token counts (different vocabularies and training data):")
+    print(f"{'text':>45} {'ours':>6} {'cl100k':>9}")
     print("-" * 64)
 
     for s in samples:
-        our_tokens = len(pre_tokenize(s))  # just compare pre-tokenization chunks
+        our_tokens = len(tok.encode(s))
         tik_tokens = len(enc.encode(s))
         label = s[:42] + "..." if len(s) > 42 else s
         print(f"{label:>45} {our_tokens:>6} {tik_tokens:>9}")
 
-    print("\n(token counts differ because vocab sizes are different,")
-    print(" but pre-tokenization splits should be similar)")
-
 
 if __name__ == "__main__":
-    test_roundtrip()
-    test_pretokenization()
-    test_compression()
-    test_vs_tiktoken()
+    tests = [
+        test_roundtrip,
+        test_pretokenization_golden,
+        test_unicode_roundtrip,
+        test_merge_order,
+        test_save_load,
+    ]
+    for test in tests:
+        test()
+    print(f"\n{len(tests)} tests passed")
+    run_optional_tiktoken_comparison()
